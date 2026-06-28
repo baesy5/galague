@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>갤라그 GALAGA - 연동판</title>
+<title>갤라그 GALAGA - 글로벌 리더보드</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
@@ -35,12 +35,13 @@
     align-items: center;
     padding: 6px 4px;
     color: #fff;
-    font-size: clamp(7px, 2vw, 11px);
+    font-size: clamp(6px, 1.8vw, 10px);
     letter-spacing: 1px;
   }
 
   #hud .hud-group { display: flex; flex-direction: column; gap: 3px; }
   #hud .label { color: #f00; font-size: 0.75em; }
+  #hud .label.global { color: #ff0; } /* 전체 최고 점수 라벨 색상 */
   #hud .value { color: #fff; }
   #hud .lives-icons { display: flex; gap: 4px; align-items: center; }
 
@@ -85,10 +86,10 @@
   }
 
   .overlay-score {
-    font-size: clamp(9px, 2.5vw, 14px);
+    font-size: clamp(9px, 2.5vw, 13px);
     color: #0ff;
     text-align: center;
-    line-height: 2;
+    line-height: 1.8;
     white-space: pre-line;
   }
 
@@ -97,7 +98,6 @@
     50% { opacity: 0; }
   }
 
-  /* 로그인 모달 스타일 */
   #login-box {
     position: absolute;
     top: 50%; left: 50%;
@@ -181,11 +181,11 @@
       <span class="value" id="score-display">000000</span>
     </div>
     <div class="hud-group" style="align-items:center">
-      <span class="label">STAGE</span>
-      <span class="value" id="stage-display">1</span>
+      <span class="label global" id="global-user-label">BEST: NONE</span>
+      <span class="value" id="global-score-display">000000</span>
     </div>
     <div class="hud-group" style="align-items:flex-end">
-      <span class="label">LIVES</span>
+      <span class="label">STAGE <span id="stage-display" style="color:#fff">1</span></span>
       <div class="lives-icons" id="lives-display"></div>
     </div>
   </div>
@@ -216,8 +216,8 @@
 </div>
 
 <script>
-// ⚠️ 여기에 구글 앱스 스크립트 배포 시 받은 웹앱 URL을 꼭 붙여넣으세요!
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx5wGMlkDWG4LQfOjAAO8cYhiyKWWJTuPafEQ4bkvJ9vv8r7qxc2FMqzxSrGKcalyC9/exec"; 
+// ⚠️ 여기에 새로 배포한 구글 앱스 스크립트 웹앱 URL을 붙여넣으세요!
+const WEB_APP_URL = "YOUR_WEB_APP_URL_HERE"; 
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -228,6 +228,9 @@ const ovSub = document.getElementById('ov-sub');
 const scoreDisplay = document.getElementById('score-display');
 const stageDisplay = document.getElementById('stage-display');
 const livesDisplay = document.getElementById('lives-display');
+
+const globalUserLabel = document.getElementById('global-user-label');
+const globalScoreDisplay = document.getElementById('global-score-display');
 
 const loginBox = document.getElementById('login-box');
 const loginTitle = document.getElementById('login-title');
@@ -256,11 +259,11 @@ window.addEventListener('resize', () => { resize(); if(gameState !== 'playing') 
 
 const S = (v) => v * scale;
 
-let gameState = 'auth'; // 최초 상태는 인증(로그인)
+let gameState = 'auth';
 let isRegisterMode = false;
 let currentUserId = "";
 
-let score = 0, hiScore = 0, lives = 3, stage = 1;
+let score = 0, hiScore = 0, globalHiScore = 0, globalHiUser = "NONE", lives = 3, stage = 1;
 let player, bullets, enemies, enemyBullets, particles, stars;
 let frameCount = 0;
 let stageTransitionTimer = 0;
@@ -269,9 +272,8 @@ const keys = {};
 const mobileKeys = { left: false, right: false, fire: false };
 let fireCooldown = 0;
 
-// 아웃풋 및 이벤트 막기 개조
 document.addEventListener('keydown', e => {
-  if(gameState === 'auth') return; // 로그인 중에는 키 입력 막음
+  if(gameState === 'auth') return;
   keys[e.code] = true;
   if((e.code === 'Space' || e.code === 'Enter') && gameState !== 'playing' && gameState !== 'saving') startGame();
   if(e.code === 'Space') e.preventDefault();
@@ -294,14 +296,12 @@ canvas.addEventListener('touchstart', e => {
   if(gameState !== 'playing' && gameState !== 'auth' && gameState !== 'saving') startGame();
 }, { passive: false });
 
-// 로그인 토글 기능 (Login <-> Signup)
 loginToggleBtn.addEventListener('click', () => {
   isRegisterMode = !isRegisterMode;
   loginTitle.textContent = isRegisterMode ? "SIGN UP" : "LOGIN";
   loginToggleBtn.textContent = isRegisterMode ? "ALREADY HAVE AN ACCOUNT? LOGIN" : "NEED AN ACCOUNT? SIGNUP";
 });
 
-// 로그인 및 회원가입 백엔드 연동
 loginSubmitBtn.addEventListener('click', async () => {
   const id = loginIdInput.value.trim();
   const password = loginPwInput.value.trim();
@@ -331,6 +331,9 @@ loginSubmitBtn.addEventListener('click', async () => {
       } else {
         currentUserId = result.id;
         hiScore = result.hiscore;
+        globalHiScore = result.globalHiScore;
+        globalHiUser = result.globalHiUser;
+        
         userLabel.textContent = currentUserId.toUpperCase();
         loginBox.classList.add('hidden');
         showTitle();
@@ -384,11 +387,6 @@ function drawPlayerShip(x, y, w, h, color) {
   ctx.lineTo(x + w*0.85, y + h);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#9ef';
-  ctx.fillRect(cx - S(2), y + S(2), S(4), S(6));
-  ctx.fillStyle = '#f80';
-  ctx.fillRect(x + w*0.25, y + h*0.85, S(3), S(4));
-  ctx.fillRect(x + w*0.65, y + h*0.85, S(3), S(4));
 }
 
 function drawEnemy(e) {
@@ -401,20 +399,10 @@ function drawEnemy(e) {
     ctx.fillStyle = e.phase === 2 ? '#f4f' : '#f80';
     ctx.beginPath(); ctx.ellipse(cx, cy, w*0.5, h*0.38, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.ellipse(cx, cy - h*0.1, w*0.28, h*0.26, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.ellipse(cx - w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx + w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#f00';
-    const wingY = cy + h*0.1;
-    ctx.beginPath(); ctx.moveTo(x, wingY); ctx.lineTo(x + w*0.22, wingY - h*0.2); ctx.lineTo(x + w*0.35, wingY + h*0.2); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(x + w, wingY); ctx.lineTo(x + w*0.78, wingY - h*0.2); ctx.lineTo(x + w*0.65, wingY + h*0.2); ctx.closePath(); ctx.fill();
   } else if(e.type === 'butterfly') {
     ctx.fillStyle = '#0af'; ctx.beginPath(); ctx.ellipse(cx, cy, w*0.22, h*0.32, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#0af88'; ctx.beginPath(); ctx.ellipse(cx - w*0.35, cy, w*0.3, h*0.26, -0.3, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(cx + w*0.35, cy, w*0.3, h*0.26, 0.3, 0, Math.PI*2); ctx.fill();
   } else {
     ctx.fillStyle = '#f44'; ctx.fillRect(x + w*0.2, y, w*0.6, h*0.5); ctx.fillRect(x, y + h*0.3, w, h*0.4);
-    ctx.fillStyle = '#fa0'; ctx.fillRect(x + w*0.3, y + h*0.1, w*0.4, h*0.3);
   }
 }
 
@@ -469,7 +457,6 @@ function nextStage() {
   overlay.classList.remove('hidden');
 }
 
-// 점수 저장 및 게임오버 처리 개조
 async function gameOver() {
   gameState = 'saving';
   ovTitle.textContent = 'GAME OVER';
@@ -489,10 +476,15 @@ async function gameOver() {
     const result = await response.json();
     if(result.success) {
       hiScore = result.hiscore;
-      if(result.newHi) {
-        ovScore.textContent = 'NEW HIGH SCORE!\n' + String(score).padStart(6,'0');
+      globalHiScore = result.globalHiScore;
+      globalHiUser = result.globalHiUser;
+
+      if(score >= globalHiScore && score > 0) {
+        ovScore.textContent = '👑 GLOBAL NEW RECORD! 👑\n' + String(score).padStart(6,'0');
+      } else if(score > hiScore) {
+        ovScore.textContent = 'NEW PERSONAL HIGH!\n' + String(score).padStart(6,'0');
       } else {
-        ovScore.textContent = 'SCORE: ' + String(score).padStart(6,'0') + '\nHI: ' + String(hiScore).padStart(6,'0');
+        ovScore.textContent = 'SCORE: ' + String(score).padStart(6,'0') + '\nMY HI: ' + String(hiScore).padStart(6,'0');
       }
     }
   } catch(e) {
@@ -507,7 +499,7 @@ async function gameOver() {
 function showTitle() {
   gameState = 'title';
   ovTitle.textContent = 'GALAGA';
-  ovScore.textContent = 'HI-SCORE: ' + String(hiScore).padStart(6,'0');
+  ovScore.textContent = 'MY HI-SCORE: ' + String(hiScore).padStart(6,'0') + '\nGLOBAL BEST: ' + globalHiUser + ' (' + String(globalHiScore).padStart(6,'0') + ')';
   ovSub.textContent = 'PRESS SPACE OR TAP TO START';
   overlay.classList.remove('hidden');
   updateHUD();
@@ -551,10 +543,6 @@ function updateEnemies() {
       if(e.diveTimer-- <= 0) {
         e.diving = true; e.divePhase = 0;
         e.diveAngle = Math.atan2(player.y - e.y, player.x - e.x);
-      }
-      if(Math.random() < 0.002 + stage*0.0005) {
-        const angle = Math.atan2(player.y - e.y, player.x - e.x);
-        enemyBullets.push({ x: e.x + e.w/2, y: e.y + e.h, vx: Math.cos(angle)*3, vy: Math.sin(angle)*3, w:4, h:8 });
       }
     } else {
       const spd = 2.5 + stage * 0.3;
@@ -615,6 +603,11 @@ function draw() {
 
 function updateHUD() {
   scoreDisplay.textContent = String(score).padStart(6,'0');
+  
+  // 🌟 HUD 상단 중앙에 전체 1위 유저 ID와 최고 점수 반영
+  globalUserLabel.textContent = "BEST: " + globalHiUser;
+  globalScoreDisplay.textContent = String(globalHiScore).padStart(6,'0');
+  
   stageDisplay.textContent = stage;
   livesDisplay.innerHTML = '';
   for(let i = 0; i < lives; i++) {
@@ -638,7 +631,7 @@ function loop() {
 }
 
 mkStars();
-drawStars(); // 최초 로그인 대기용 배경 그리기
+drawStars();
 
 canvas.addEventListener('click', () => {
   if(gameState !== 'playing' && gameState !== 'auth' && gameState !== 'saving') startGame();
