@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>갤라그 GALAGA</title>
+<title>갤라그 GALAGA - 연동판</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
@@ -62,6 +62,7 @@
     gap: 12px;
     z-index: 10;
     pointer-events: none;
+    background: rgba(0,0,0,0.6);
   }
 
   #overlay.hidden { display: none; }
@@ -88,19 +89,43 @@
     color: #0ff;
     text-align: center;
     line-height: 2;
-  }
-
-  .overlay-stage {
-    font-size: clamp(14px, 4vw, 28px);
-    color: #ff0;
-    text-align: center;
-    letter-spacing: 2px;
+    white-space: pre-line;
   }
 
   @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0; }
   }
+
+  /* 로그인 모달 스타일 */
+  #login-box {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: #111;
+    border: 3px solid #ff0;
+    padding: 20px;
+    width: 280px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: #fff;
+    font-size: 10px;
+  }
+  #login-box.hidden { display: none; }
+  #login-box h2 { text-align: center; color: #ff0; margin-bottom: 5px; font-size: 14px; }
+  #login-box input { 
+    background: #000; border: 2px solid #555; color: #fff; 
+    padding: 8px; font-family: 'Press Start 2P'; font-size: 10px; text-align: center;
+  }
+  #login-box input:focus { border-color: #0ff; outline: none; }
+  #login-box button {
+    background: #222; border: 2px solid #fff; color: #fff;
+    padding: 8px; font-family: 'Press Start 2P'; font-size: 10px; cursor: pointer;
+  }
+  #login-box button:active { background: #fff; color: #000; }
+  .login-toggle { text-align: center; color: #888; cursor: pointer; margin-top: 5px; text-decoration: underline; }
 
   #mobile-controls {
     display: none;
@@ -134,29 +159,13 @@
     color: #ff0;
   }
 
-  .ctrl-move {
-    display: flex;
-    gap: 6px;
-  }
-
-  .btn-left, .btn-right {
-    width: clamp(52px, 14vw, 70px);
-    height: clamp(44px, 11vw, 58px);
-  }
-
+  .ctrl-move { display: flex; gap: 6px; }
+  .btn-left, .btn-right { width: clamp(52px, 14vw, 70px); height: clamp(44px, 11vw, 58px); }
   .btn-fire {
-    width: clamp(70px, 18vw, 90px);
-    height: clamp(44px, 11vw, 58px);
-    background: rgba(255,50,50,0.2);
-    border-color: #f44;
-    color: #f44;
+    width: clamp(70px, 18vw, 90px); height: clamp(44px, 11vw, 58px);
+    background: rgba(255,50,50,0.2); border-color: #f44; color: #f44;
   }
-
-  .btn-fire:active, .btn-fire.pressed {
-    background: rgba(255,50,50,0.45);
-    border-color: #ff0;
-    color: #ff0;
-  }
+  .btn-fire:active, .btn-fire.pressed { background: rgba(255,50,50,0.45); border-color: #ff0; color: #ff0; }
 
   @media (hover: none) and (pointer: coarse) {
     #mobile-controls { display: flex; }
@@ -168,7 +177,7 @@
 <div id="game-wrapper">
   <div id="hud">
     <div class="hud-group">
-      <span class="label">SCORE</span>
+      <span class="label" id="user-label">SCORE</span>
       <span class="value" id="score-display">000000</span>
     </div>
     <div class="hud-group" style="align-items:center">
@@ -183,7 +192,15 @@
 
   <canvas id="canvas"></canvas>
 
-  <div id="overlay">
+  <div id="login-box">
+    <h2 id="login-title">LOGIN</h2>
+    <input type="text" id="login-id" placeholder="USER ID" maxlength="10">
+    <input type="password" id="login-pw" placeholder="PASSWORD">
+    <button id="btn-login-submit">SUBMIT</button>
+    <div class="login-toggle" id="btn-login-toggle">NEED AN ACCOUNT? SIGNUP</div>
+  </div>
+
+  <div id="overlay" class="hidden">
     <div class="overlay-title" id="ov-title">GALAGA</div>
     <div class="overlay-score" id="ov-score"></div>
     <div class="overlay-sub" id="ov-sub">PRESS SPACE OR TAP TO START</div>
@@ -199,6 +216,9 @@
 </div>
 
 <script>
+// ⚠️ 여기에 구글 앱스 스크립트 배포 시 받은 웹앱 URL을 꼭 붙여넣으세요!
+const WEB_APP_URL = "YOUR_WEB_APP_URL_HERE"; 
+
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const overlay = document.getElementById('overlay');
@@ -208,6 +228,14 @@ const ovSub = document.getElementById('ov-sub');
 const scoreDisplay = document.getElementById('score-display');
 const stageDisplay = document.getElementById('stage-display');
 const livesDisplay = document.getElementById('lives-display');
+
+const loginBox = document.getElementById('login-box');
+const loginTitle = document.getElementById('login-title');
+const loginIdInput = document.getElementById('login-id');
+const loginPwInput = document.getElementById('login-pw');
+const loginSubmitBtn = document.getElementById('btn-login-submit');
+const loginToggleBtn = document.getElementById('btn-login-toggle');
+const userLabel = document.getElementById('user-label');
 
 const BASE_W = 400, BASE_H = 520;
 let scale = 1, W = BASE_W, H = BASE_H;
@@ -228,32 +256,34 @@ window.addEventListener('resize', () => { resize(); if(gameState !== 'playing') 
 
 const S = (v) => v * scale;
 
-let gameState = 'title';
+let gameState = 'auth'; // 최초 상태는 인증(로그인)
+let isRegisterMode = false;
+let currentUserId = "";
+
 let score = 0, hiScore = 0, lives = 3, stage = 1;
 let player, bullets, enemies, enemyBullets, particles, stars;
-let frameCount = 0, lastTime = 0;
+let frameCount = 0;
 let stageTransitionTimer = 0;
-let bossActive = false;
 
 const keys = {};
 const mobileKeys = { left: false, right: false, fire: false };
 let fireCooldown = 0;
 
+// 아웃풋 및 이벤트 막기 개조
 document.addEventListener('keydown', e => {
+  if(gameState === 'auth') return; // 로그인 중에는 키 입력 막음
   keys[e.code] = true;
-  if((e.code === 'Space' || e.code === 'Enter') && gameState !== 'playing') startGame();
+  if((e.code === 'Space' || e.code === 'Enter') && gameState !== 'playing' && gameState !== 'saving') startGame();
   if(e.code === 'Space') e.preventDefault();
 });
 document.addEventListener('keyup', e => { keys[e.code] = false; });
 
 function setupMobileBtn(id, key) {
   const btn = document.getElementById(id);
-  const on = (e) => { e.preventDefault(); mobileKeys[key] = true; btn.classList.add('pressed'); };
+  const on = (e) => { e.preventDefault(); if(gameState==='playing') mobileKeys[key] = true; btn.classList.add('pressed'); };
   const off = (e) => { e.preventDefault(); mobileKeys[key] = false; btn.classList.remove('pressed'); };
   btn.addEventListener('touchstart', on, { passive: false });
   btn.addEventListener('touchend', off, { passive: false });
-  btn.addEventListener('mousedown', on);
-  btn.addEventListener('mouseup', off);
 }
 setupMobileBtn('btn-left', 'left');
 setupMobileBtn('btn-right', 'right');
@@ -261,8 +291,60 @@ setupMobileBtn('btn-fire', 'fire');
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if(gameState !== 'playing') startGame();
+  if(gameState !== 'playing' && gameState !== 'auth' && gameState !== 'saving') startGame();
 }, { passive: false });
+
+// 로그인 토글 기능 (Login <-> Signup)
+loginToggleBtn.addEventListener('click', () => {
+  isRegisterMode = !isRegisterMode;
+  loginTitle.textContent = isRegisterMode ? "SIGN UP" : "LOGIN";
+  loginToggleBtn.textContent = isRegisterMode ? "ALREADY HAVE AN ACCOUNT? LOGIN" : "NEED AN ACCOUNT? SIGNUP";
+});
+
+// 로그인 및 회원가입 백엔드 연동
+loginSubmitBtn.addEventListener('click', async () => {
+  const id = loginIdInput.value.trim();
+  const password = loginPwInput.value.trim();
+
+  if(!id || !password) { alert("ID와 PASSWORD를 입력하세요."); return; }
+  
+  loginSubmitBtn.disabled = true;
+  loginSubmitBtn.textContent = "WAIT...";
+
+  try {
+    const response = await fetch(WEB_APP_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: isRegisterMode ? "register" : "login",
+        id: id,
+        password: password
+      })
+    });
+    const result = await response.json();
+
+    if(result.success) {
+      if(isRegisterMode) {
+        alert(result.message);
+        isRegisterMode = false;
+        loginTitle.textContent = "LOGIN";
+        loginToggleBtn.textContent = "NEED AN ACCOUNT? SIGNUP";
+      } else {
+        currentUserId = result.id;
+        hiScore = result.hiscore;
+        userLabel.textContent = currentUserId.toUpperCase();
+        loginBox.classList.add('hidden');
+        showTitle();
+      }
+    } else {
+      alert(result.message);
+    }
+  } catch (err) {
+    alert("서버 연결에 실패했습니다. URL을 확인하세요.");
+  } finally {
+    loginSubmitBtn.disabled = false;
+    loginSubmitBtn.textContent = "SUBMIT";
+  }
+});
 
 function mkStars() {
   stars = [];
@@ -317,67 +399,22 @@ function drawEnemy(e) {
 
   if(e.type === 'boss') {
     ctx.fillStyle = e.phase === 2 ? '#f4f' : '#f80';
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, w*0.5, h*0.38, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#ff0';
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - h*0.1, w*0.28, h*0.26, 0, 0, Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx, cy, w*0.5, h*0.38, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.ellipse(cx, cy - h*0.1, w*0.28, h*0.26, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(cx - w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2);
-    ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx - w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + w*0.1, cy - h*0.08, w*0.07, h*0.07, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#f00';
     const wingY = cy + h*0.1;
-    ctx.beginPath();
-    ctx.moveTo(x, wingY);
-    ctx.lineTo(x + w*0.22, wingY - h*0.2);
-    ctx.lineTo(x + w*0.35, wingY + h*0.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x + w, wingY);
-    ctx.lineTo(x + w*0.78, wingY - h*0.2);
-    ctx.lineTo(x + w*0.65, wingY + h*0.2);
-    ctx.closePath();
-    ctx.fill();
-    if(e.phase === 2) {
-      ctx.strokeStyle = '#f00';
-      ctx.lineWidth = S(1.5);
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, w*0.52, h*0.4, 0, 0, Math.PI*2);
-      ctx.stroke();
-    }
+    ctx.beginPath(); ctx.moveTo(x, wingY); ctx.lineTo(x + w*0.22, wingY - h*0.2); ctx.lineTo(x + w*0.35, wingY + h*0.2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + w, wingY); ctx.lineTo(x + w*0.78, wingY - h*0.2); ctx.lineTo(x + w*0.65, wingY + h*0.2); ctx.closePath(); ctx.fill();
   } else if(e.type === 'butterfly') {
-    ctx.fillStyle = e.captured ? '#0f0' : '#0af';
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, w*0.22, h*0.32, 0, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = (e.captured ? '#0f0' : '#0af') + '88';
-    ctx.beginPath();
-    ctx.ellipse(cx - w*0.35, cy, w*0.3, h*0.26, -0.3, 0, Math.PI*2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(cx + w*0.35, cy, w*0.3, h*0.26, 0.3, 0, Math.PI*2);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(cx - w*0.08, cy - h*0.1, S(2), 0, Math.PI*2);
-    ctx.arc(cx + w*0.08, cy - h*0.1, S(2), 0, Math.PI*2);
-    ctx.fill();
+    ctx.fillStyle = '#0af'; ctx.beginPath(); ctx.ellipse(cx, cy, w*0.22, h*0.32, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0af88'; ctx.beginPath(); ctx.ellipse(cx - w*0.35, cy, w*0.3, h*0.26, -0.3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + w*0.35, cy, w*0.3, h*0.26, 0.3, 0, Math.PI*2); ctx.fill();
   } else {
-    ctx.fillStyle = '#f44';
-    ctx.fillRect(x + w*0.2, y, w*0.6, h*0.5);
-    ctx.fillRect(x, y + h*0.3, w, h*0.4);
-    ctx.fillStyle = '#fa0';
-    ctx.fillRect(x + w*0.3, y + h*0.1, w*0.4, h*0.3);
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(x + w*0.35, y + h*0.15, S(3), S(3));
-    ctx.fillRect(x + w*0.55, y + h*0.15, S(3), S(3));
+    ctx.fillStyle = '#f44'; ctx.fillRect(x + w*0.2, y, w*0.6, h*0.5); ctx.fillRect(x, y + h*0.3, w, h*0.4);
+    ctx.fillStyle = '#fa0'; ctx.fillRect(x + w*0.3, y + h*0.1, w*0.4, h*0.3);
   }
 }
 
@@ -392,35 +429,24 @@ function spawnEnemies() {
     for(let c = 0; c < cols; c++) {
       let type = r === 0 ? 'butterfly' : 'bee';
       enemies.push({
-        x: startX + c*(eW+padX), y: 40 + r*24,
-        w: eW, h: eH, type, alive: true,
+        x: startX + c*(eW+padX), y: 40 + r*24, w: eW, h: eH, type, alive: true,
         homeX: startX + c*(eW+padX), homeY: 40 + r*24,
         diveTimer: Math.random()*300 + 150 + r*60 + c*20,
-        diving: false, diveAngle: 0, diveX: 0, diveY: 0, divePhase: 0,
-        captured: false, hp: 1, phase: 1,
-        animTick: Math.floor(Math.random()*30)
+        diving: false, diveAngle: 0, divePhase: 0, hp: 1, phase: 1
       });
     }
   }
   if(stage >= 3) {
-    const boss = {
-      x: BASE_W/2 - 18, y: 20, w: 36, h: 28,
-      type: 'boss', alive: true,
-      homeX: BASE_W/2 - 18, homeY: 20,
-      diveTimer: 200, diving: false, diveAngle: 0,
-      diveX: 0, diveY: 0, divePhase: 0,
-      captured: false, hp: 2, phase: 1, animTick: 0
-    };
-    enemies.unshift(boss);
-    bossActive = true;
-  } else {
-    bossActive = false;
+    enemies.unshift({
+      x: BASE_W/2 - 18, y: 20, w: 36, h: 28, type: 'boss', alive: true,
+      homeX: BASE_W/2 - 18, homeY: 20, diveTimer: 200, diving: false, diveAngle: 0, divePhase: 0, hp: 2, phase: 1
+    });
   }
 }
 
 function startGame() {
   score = 0; lives = 3; stage = 1; frameCount = 0;
-  player = { x: BASE_W/2, y: BASE_H - 30, w: 20, h: 18, speed: 3.5, captured: false, captureTimer: 0 };
+  player = { x: BASE_W/2, y: BASE_H - 30, w: 20, h: 18, speed: 3.5, captured: false };
   bullets = []; enemyBullets = []; particles = [];
   fireCooldown = 0; stageTransitionTimer = 0;
   spawnEnemies();
@@ -443,38 +469,61 @@ function nextStage() {
   overlay.classList.remove('hidden');
 }
 
-function gameOver() {
-  if(score > hiScore) hiScore = score;
-  gameState = 'gameover';
+// 점수 저장 및 게임오버 처리 개조
+async function gameOver() {
+  gameState = 'saving';
   ovTitle.textContent = 'GAME OVER';
-  ovScore.textContent = 'SCORE: ' + String(score).padStart(6,'0') + '\nHI: ' + String(hiScore).padStart(6,'0');
-  ovSub.textContent = 'PRESS SPACE OR TAP';
+  ovScore.textContent = 'SAVING SCORE...';
+  ovSub.textContent = '';
   overlay.classList.remove('hidden');
+
+  try {
+    const response = await fetch(WEB_APP_URL, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "updateScore",
+        id: currentUserId,
+        score: score
+      })
+    });
+    const result = await response.json();
+    if(result.success) {
+      hiScore = result.hiscore;
+      if(result.newHi) {
+        ovScore.textContent = 'NEW HIGH SCORE!\n' + String(score).padStart(6,'0');
+      } else {
+        ovScore.textContent = 'SCORE: ' + String(score).padStart(6,'0') + '\nHI: ' + String(hiScore).padStart(6,'0');
+      }
+    }
+  } catch(e) {
+    ovScore.textContent = 'SCORE: ' + String(score).padStart(6,'0') + '\n(SAVE FAILED)';
+  } finally {
+    gameState = 'gameover';
+    ovSub.textContent = 'PRESS SPACE OR TAP';
+    updateHUD();
+  }
 }
 
 function showTitle() {
   gameState = 'title';
   ovTitle.textContent = 'GALAGA';
-  ovScore.textContent = hiScore > 0 ? 'HI-SCORE: ' + String(hiScore).padStart(6,'0') : '';
+  ovScore.textContent = 'HI-SCORE: ' + String(hiScore).padStart(6,'0');
   ovSub.textContent = 'PRESS SPACE OR TAP TO START';
   overlay.classList.remove('hidden');
+  updateHUD();
 }
 
 function addParticle(x, y, color) {
   for(let i = 0; i < 8; i++) {
     const angle = (Math.PI*2/8)*i + Math.random()*0.4;
     const spd = Math.random()*2 + 1;
-    particles.push({ x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd, life: 30+Math.random()*20, color });
+    particles.push({ x, y, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd, life: 30, color });
   }
 }
 
-function updatePlayer(dt) {
-  if(player.captured) {
-    player.captureTimer--;
-    if(player.captureTimer <= 0) { lives--; updateHUD(); if(lives <= 0) { gameOver(); return; } player.captured = false; player.x = BASE_W/2; player.y = BASE_H - 30; }
-    return;
-  }
-  const spd = S(player.speed) / scale;
+function updatePlayer() {
+  if(player.captured) return;
+  const spd = player.speed;
   if((keys['ArrowLeft'] || keys['KeyA'] || mobileKeys.left) && player.x > player.w/2) player.x -= spd;
   if((keys['ArrowRight'] || keys['KeyD'] || mobileKeys.right) && player.x < BASE_W - player.w/2) player.x += spd;
 
@@ -486,14 +535,8 @@ function updatePlayer(dt) {
 }
 
 function updateBullets() {
-  bullets = bullets.filter(b => {
-    b.y -= b.spd;
-    return b.y > -10;
-  });
-  enemyBullets = enemyBullets.filter(b => {
-    b.x += b.vx; b.y += b.vy;
-    return b.y < BASE_H + 10 && b.x > -10 && b.x < BASE_W + 10;
-  });
+  bullets = bullets.filter(b => { b.y -= b.spd; return b.y > -10; });
+  enemyBullets = enemyBullets.filter(b => { b.x += b.vx; b.y += b.vy; return b.y < BASE_H + 10; });
 }
 
 function updateEnemies() {
@@ -501,39 +544,27 @@ function updateEnemies() {
   if(alive.length === 0) { nextStage(); return; }
 
   const swing = Math.sin(frameCount * 0.018) * (20 + stage * 4);
-  const swingY = Math.sin(frameCount * 0.009) * 6;
-
   enemies.forEach(e => {
     if(!e.alive) return;
-    e.animTick++;
-
     if(!e.diving) {
       e.x = e.homeX + swing;
-      e.y = e.homeY + swingY;
-      e.diveTimer--;
-      if(e.diveTimer <= 0) {
+      if(e.diveTimer-- <= 0) {
         e.diving = true; e.divePhase = 0;
         e.diveAngle = Math.atan2(player.y - e.y, player.x - e.x);
-        e.diveX = e.x; e.diveY = e.y;
-        e.diveTimer = 0;
       }
       if(Math.random() < 0.002 + stage*0.0005) {
-        const spd = 2 + Math.random() * 1.5;
-        const angle = Math.atan2(player.y - e.y, player.x - e.x) + (Math.random()-0.5)*0.5;
-        enemyBullets.push({ x: e.x + e.w/2, y: e.y + e.h, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd, w:4, h:8 });
+        const angle = Math.atan2(player.y - e.y, player.x - e.x);
+        enemyBullets.push({ x: e.x + e.w/2, y: e.y + e.h, vx: Math.cos(angle)*3, vy: Math.sin(angle)*3, w:4, h:8 });
       }
     } else {
       const spd = 2.5 + stage * 0.3;
       if(e.divePhase === 0) {
-        e.diveAngle = Math.atan2(player.y - e.y, player.x - e.x) * 0.05 + e.diveAngle * 0.95;
-        e.x += Math.cos(e.diveAngle) * spd;
-        e.y += Math.sin(e.diveAngle) * spd;
-        if(e.y > BASE_H + 30) { e.divePhase = 1; e.x = e.x < BASE_W/2 ? -30 : BASE_W + 30; e.y = e.homeY - 60; }
+        e.x += Math.cos(e.diveAngle) * spd; e.y += Math.sin(e.diveAngle) * spd;
+        if(e.y > BASE_H + 30) { e.divePhase = 1; e.y = e.homeY - 60; }
       } else {
-        const tx = e.homeX, ty = e.homeY;
-        const dx = tx - e.x, dy = ty - e.y;
+        const dx = e.homeX - e.x, dy = e.homeY - e.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
-        if(dist < 6) { e.x = e.homeX; e.y = e.homeY; e.diving = false; e.diveTimer = 120 + Math.random()*200; }
+        if(dist < 6) { e.x = e.homeX; e.y = e.homeY; e.diving = false; e.diveTimer = 150 + Math.random()*200; }
         else { e.x += dx/dist * spd * 1.5; e.y += dy/dist * spd * 1.5; }
       }
     }
@@ -542,18 +573,14 @@ function updateEnemies() {
 
 function checkCollisions() {
   bullets.forEach(b => {
-    if(!b) return;
     enemies.forEach(e => {
       if(!e.alive) return;
-      const bx = b.x * scale, by = b.y * scale;
-      const ex = e.x * scale, ey = e.y * scale;
-      if(bx > ex && bx < ex + e.w*scale && by > ey && by < ey + e.h*scale) {
+      if(b.x > e.x && b.x < e.x + e.w && b.y > e.y && b.y < e.y + e.h) {
         e.hp--;
         if(e.hp <= 0) {
           e.alive = false;
-          const pts = e.type==='boss'?400:e.type==='butterfly'?160:80;
-          score += pts * (e.diving?2:1);
-          addParticle(e.x+e.w/2, e.y+e.h/2, e.type==='boss'?'#f80':e.type==='butterfly'?'#0af':'#f44');
+          score += (e.type==='boss'?400:e.type==='butterfly'?160:80) * (e.diving?2:1);
+          addParticle(e.x+e.w/2, e.y+e.h/2, '#f44');
           updateHUD();
         } else if(e.type==='boss') { e.phase = 2; }
         b.dead = true;
@@ -563,72 +590,27 @@ function checkCollisions() {
   bullets = bullets.filter(b => !b.dead);
 
   if(!player.captured) {
-    enemyBullets.forEach((b,i) => {
-      const bx = b.x, by = b.y;
-      const px = player.x - player.w/2, py = player.y - player.h/2;
-      if(bx > px && bx < px + player.w && by > py && by < py + player.h) {
-        b.dead = true;
-        addParticle(player.x, player.y, '#5af');
-        lives--; updateHUD();
-        if(lives <= 0) { gameOver(); return; }
-        player.x = BASE_W/2; player.y = BASE_H - 30;
+    enemyBullets.forEach(b => {
+      if(b.x > player.x - player.w/2 && b.x < player.x + player.w/2 && b.y > player.y - player.h/2 && b.y < player.y + player.h/2) {
+        b.dead = true; lives--; updateHUD();
+        if(lives <= 0) { gameOver(); } else { player.x = BASE_W/2; }
       }
     });
     enemyBullets = enemyBullets.filter(b => !b.dead);
-
-    enemies.forEach(e => {
-      if(!e.alive || !e.diving) return;
-      const ex = e.x, ey = e.y;
-      const px = player.x - player.w/2, py = player.y - player.h/2;
-      if(ex + e.w > px && ex < px + player.w && ey + e.h > py && ey < py + player.h) {
-        addParticle(player.x, player.y, '#5af');
-        lives--; updateHUD();
-        if(lives <= 0) { gameOver(); }
-        else { player.x = BASE_W/2; player.y = BASE_H - 30; e.diving = false; e.diveTimer = 180; e.x = e.homeX; e.y = e.homeY; }
-      }
-    });
   }
 }
 
 function updateParticles() {
-  particles = particles.filter(p => {
-    p.x += p.vx; p.y += p.vy; p.vx *= 0.93; p.vy *= 0.93; p.life--;
-    return p.life > 0;
-  });
+  particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; });
 }
 
 function draw() {
   drawStars();
-
   enemies.forEach(e => { if(e.alive) drawEnemy(e); });
-
-  if(!player.captured) {
-    drawPlayerShip(
-      (player.x - player.w/2) * scale,
-      (player.y - player.h) * scale,
-      player.w * scale, player.h * scale
-    );
-  }
-
-  ctx.fillStyle = '#ff0';
-  bullets.forEach(b => {
-    ctx.fillRect((b.x - b.w/2)*scale, (b.y - b.h)*scale, b.w*scale, b.h*scale);
-  });
-
-  enemyBullets.forEach(b => {
-    ctx.fillStyle = '#f44';
-    ctx.fillRect((b.x - b.w/2)*scale, (b.y - b.h/2)*scale, b.w*scale, b.h*scale);
-  });
-
-  particles.forEach(p => {
-    ctx.globalAlpha = p.life / 50;
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x*scale - S(2), p.y*scale - S(2), S(4), S(4));
-  });
-  ctx.globalAlpha = 1;
-
-  ctx.fillStyle = '#333';
-  ctx.fillRect(0, H - S(1), W, S(1));
+  if(!player.captured) drawPlayerShip((player.x - player.w/2)*scale, (player.y - player.h)*scale, player.w*scale, player.h*scale);
+  ctx.fillStyle = '#ff0'; bullets.forEach(b => ctx.fillRect((b.x - b.w/2)*scale, (b.y - b.h)*scale, b.w*scale, b.h*scale));
+  ctx.fillStyle = '#f44'; enemyBullets.forEach(b => ctx.fillRect((b.x - b.w/2)*scale, (b.y - b.h/2)*scale, b.w*scale, b.h*scale));
+  particles.forEach(p => { ctx.fillStyle = p.color; ctx.fillRect(p.x*scale, p.y*scale, S(2), S(2)); });
 }
 
 function updateHUD() {
@@ -637,48 +619,29 @@ function updateHUD() {
   livesDisplay.innerHTML = '';
   for(let i = 0; i < lives; i++) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.setAttribute('width', Math.round(S(12)));
-    svg.setAttribute('height', Math.round(S(12)));
-    svg.setAttribute('viewBox','0 0 12 12');
+    svg.setAttribute('width', Math.round(S(12))); svg.setAttribute('height', Math.round(S(12))); svg.setAttribute('viewBox','0 0 12 12');
     svg.innerHTML = '<polygon points="6,0 2,12 4.5,8 6,10 7.5,8 9.5,12" fill="#5af"/>';
     livesDisplay.appendChild(svg);
   }
 }
 
-let animId;
-function loop(ts) {
+function loop() {
   if(gameState !== 'playing' && gameState !== 'stageclear') return;
   frameCount++;
-
   if(gameState === 'stageclear') {
-    stageTransitionTimer--;
-    drawStars();
-    updateStars();
-    if(stageTransitionTimer <= 0) {
-      gameState = 'playing';
-      overlay.classList.add('hidden');
-    }
-    animId = requestAnimationFrame(loop);
-    return;
+    stageTransitionTimer--; drawStars(); updateStars();
+    if(stageTransitionTimer <= 0) { gameState = 'playing'; overlay.classList.add('hidden'); }
+    requestAnimationFrame(loop); return;
   }
-
-  updateStars();
-  updatePlayer();
-  updateBullets();
-  updateEnemies();
-  checkCollisions();
-  updateParticles();
-  draw();
-
-  if(gameState === 'playing') animId = requestAnimationFrame(loop);
+  updateStars(); updatePlayer(); updateBullets(); updateEnemies(); checkCollisions(); updateParticles(); draw();
+  requestAnimationFrame(loop);
 }
 
 mkStars();
-showTitle();
-drawStars();
+drawStars(); // 최초 로그인 대기용 배경 그리기
 
 canvas.addEventListener('click', () => {
-  if(gameState !== 'playing') startGame();
+  if(gameState !== 'playing' && gameState !== 'auth' && gameState !== 'saving') startGame();
 });
 </script>
 </body>
