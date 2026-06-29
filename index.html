@@ -455,6 +455,7 @@ function nextStage() {
   ovScore.textContent = '';
   ovSub.textContent = 'GET READY!';
   overlay.classList.remove('hidden');
+  updateHUD(); // 🌟 다음 스테이지 화면 준비 단계에서 상단 HUD 점수판 명시적 즉시 갱신 (기존 누적 score 보존 고정)
 }
 
 async function gameOver() {
@@ -549,7 +550,6 @@ function updateEnemies() {
         e.diveAngle = Math.atan2(player.y - e.y, player.x - e.x);
       }
       
-      // 🌟 제자리 대기 중: 정방향 아래 수직 발사 (vx = 0, vy = 속도)
       if(Math.random() < 0.0015 + stage * 0.0005) {
         enemyBullets.push({ x: e.x + e.w/2, y: e.y + e.h, vx: 0, vy: 2.5, w: 4, h: 8 });
       }
@@ -558,7 +558,6 @@ function updateEnemies() {
       if(e.divePhase === 0) {
         e.x += Math.cos(e.diveAngle) * spd; e.y += Math.sin(e.diveAngle) * spd;
         
-        // 🌟 다이빙 기습 강하 중: 대각 조준 탄도를 제거하고 무조건 수직 하강 발사
         if(Math.random() < 0.02) {
           enemyBullets.push({ x: e.x + e.w/2, y: e.y + e.h, vx: 0, vy: 3.2, w: 4, h: 8 });
         }
